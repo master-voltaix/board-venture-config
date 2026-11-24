@@ -77,5 +77,25 @@
     "cooldownDays": 120
   },
 
-  "popups": { "maxAutoPerSession": 1 }
+  "popups": { "maxAutoPerSession": 1 },
+
+  "analytics": {
+    "enabled": true,
+    "url": "https://vmgakgocszmhlzfngbvn.supabase.co",
+    "key": "sb_publishable_xIbXmveQsML5Mcp8VcWe2g_vQlSPtFt",
+    "sampleRate": 1.0
+  },
+
+  "experiments": [
+    {
+      "id": "obstacle_density",
+      "enabled": false,
+      "traffic": 0.5,
+      "audience": { "type": "TutorialComplete" },
+      "variants": {
+        "control": { "weight": 50 },
+        "denser":  { "weight": 50, "overrides": { "obstacles": { "spacingStart": 0.74 } } }
+      }
+    }
+  ]
 }

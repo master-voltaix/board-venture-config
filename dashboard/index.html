@@ -1,0 +1,342 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Board Venture Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/dist/umd/supabase.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg: #0d1117; --panel: #151b24; --panel2: #1b2330; --line: #263142;
+    --text: #e8edf4; --muted: #8b98ab; --accent: #4cc2ff; --accent2: #7ee08a;
+    --warn: #ffb44c; --bad: #ff6b6b; --radius: 14px;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--text);
+    font: 14px/1.45 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif; }
+  header { position: sticky; top: 0; z-index: 5; background: rgba(13,17,23,.92); backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--line); padding: 12px 16px; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+  header h1 { font-size: 16px; margin: 0 auto 0 0; letter-spacing: .2px; }
+  header h1 span { color: var(--muted); font-weight: 500; }
+  select, button, input { font: inherit; color: var(--text); background: var(--panel2); border: 1px solid var(--line);
+    border-radius: 10px; padding: 7px 11px; }
+  button { cursor: pointer; } button:hover { border-color: var(--accent); }
+  button.primary { background: var(--accent); color: #04121c; border-color: var(--accent); font-weight: 600; }
+  label.switch { display: inline-flex; gap: 6px; align-items: center; color: var(--muted); }
+  main { max-width: 1200px; margin: 0 auto; padding: 16px; display: grid; gap: 16px; }
+  section { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; min-width: 0; }
+  section h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .8px; color: var(--muted); margin: 0 0 12px; }
+  .hint { color: var(--muted); font-size: 12.5px; margin: 8px 0 0; }
+  .kpis { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+  .kpi { background: var(--panel2); border-radius: 12px; padding: 12px; }
+  .kpi .v { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .kpi .l { color: var(--muted); font-size: 12px; }
+  .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 16px; }
+  .chart { position: relative; height: 260px; }
+  table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; font-size: 12px; }
+  .scroll { overflow-x: auto; }
+  .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; background: var(--panel2); }
+  .on { color: var(--accent2); } .off { color: var(--muted); } .warn { color: var(--warn); }
+  code { background: var(--panel2); padding: 1px 6px; border-radius: 6px; font-size: 12.5px; word-break: break-all; }
+  #login { max-width: 420px; margin: 12vh auto; padding: 0 16px; }
+  #login section { display: grid; gap: 12px; }
+  #status { color: var(--muted); }
+  .hidden { display: none !important; }
+  @media (max-width: 560px) { .grid2 { grid-template-columns: 1fr; } .chart { height: 220px; } header h1 { width: 100%; } }
+</style>
+</head>
+<body>
+
+<div id="login" class="hidden">
+  <section>
+    <h2>Board Venture Dashboard</h2>
+    <p style="margin:0">Melde dich mit deiner Admin-E-Mail an. Du bekommst einen Login-Link per Mail.</p>
+    <input id="email" type="email" placeholder="E-Mail" autocomplete="email">
+    <button class="primary" id="sendLink">Login-Link senden</button>
+    <p id="loginMsg" class="hint"></p>
+  </section>
+</div>
+
+<div id="app" class="hidden">
+  <header>
+    <h1>Board Venture <span>Dashboard</span></h1>
+    <select id="range" aria-label="Zeitraum">
+      <option value="7">7 Tage</option><option value="30" selected>30 Tage</option><option value="90">90 Tage</option>
+    </select>
+    <label class="switch"><input type="checkbox" id="testMode"> Testdaten</label>
+    <button id="refresh">Aktualisieren</button>
+    <button id="logout">Abmelden</button>
+  </header>
+  <main>
+    <p id="status"></p>
+
+    <section>
+      <h2>Überblick</h2>
+      <div class="kpis" id="kpis"></div>
+      <p class="hint">„Testdaten“ zeigt nur Debug-Builds (deine eigenen Test-Installationen). Ohne Haken: nur echte Spieler.</p>
+    </section>
+
+    <div class="grid2">
+      <section><h2>Spieler pro Tag</h2><div class="chart"><canvas id="cPlayers"></canvas></div></section>
+      <section><h2>Runs und Ø Distanz pro Tag</h2><div class="chart"><canvas id="cRuns"></canvas></div></section>
+    </div>
+
+    <div class="grid2">
+      <section>
+        <h2>Wiederkehr (Retention)</h2>
+        <div class="kpis" id="retKpis"></div>
+        <div class="scroll" style="margin-top:12px"><table id="retTable"></table></div>
+        <p class="hint">Von allen Spielern, die an einem Tag neu waren: wie viele kamen 1, 7 bzw. 30 Tage später wieder.</p>
+      </section>
+      <section><h2>Wie weit kommen Spieler?</h2><div class="chart"><canvas id="cDist"></canvas></div>
+        <p class="hint">Anzahl Runs pro Distanz-Bereich im gewählten Zeitraum.</p></section>
+    </div>
+
+    <div class="grid2">
+      <section><h2>Tutorial</h2><div class="chart"><canvas id="cTut"></canvas></div>
+        <p class="hint">Spieler pro erreichtem Tutorial-Schritt. Ein großer Abfall zeigt, wo Leute hängen bleiben.</p></section>
+      <section>
+        <h2>A/B-Tests</h2>
+        <div class="scroll"><table id="expTable"></table></div>
+        <p class="hint">Erst ab einigen hundert Spielern pro Gruppe aussagekräftig. Vorher sind Unterschiede meist Zufall.</p>
+      </section>
+    </div>
+
+    <section>
+      <h2>Live-Config (was gerade im Spiel eingestellt ist)</h2>
+      <div id="config"></div>
+    </section>
+
+    <div class="grid2">
+      <section><h2>Ereignisse nach Typ</h2><div class="scroll"><table id="typeTable"></table></div></section>
+      <section><h2>Neueste Ereignisse</h2><div class="scroll" style="max-height:420px;overflow:auto"><table id="recentTable"></table></div></section>
+    </div>
+  </main>
+</div>
+
+<script>
+const SUPABASE_URL = "https://vmgakgocszmhlzfngbvn.supabase.co";
+const SUPABASE_KEY = "sb_publishable_xIbXmveQsML5Mcp8VcWe2g_vQlSPtFt";   // public, insert-only for the app; reads need admin login
+const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+const $ = id => document.getElementById(id);
+const fmt = n => n === null || n === undefined ? "–" : Number(n).toLocaleString("de-DE");
+const charts = {};
+const css = getComputedStyle(document.documentElement);
+const C = { accent: css.getPropertyValue("--accent").trim(), accent2: css.getPropertyValue("--accent2").trim(),
+            warn: css.getPropertyValue("--warn").trim(), muted: css.getPropertyValue("--muted").trim(), line: css.getPropertyValue("--line").trim() };
+Chart.defaults.color = C.muted; Chart.defaults.borderColor = C.line; Chart.defaults.font.family = getComputedStyle(document.body).fontFamily;
+
+function el(tag, props = {}, children = []) {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(props)) { if (k === "class") e.className = v; else e[k] = v; }
+  for (const c of [].concat(children)) e.append(c instanceof Node ? c : document.createTextNode(c ?? ""));
+  return e;
+}
+function table(t, head, rows) {
+  t.replaceChildren(el("thead", {}, el("tr", {}, head.map(h => el("th", {}, h)))),
+                    el("tbody", {}, rows.length ? rows.map(r => el("tr", {}, r.map(c => el("td", {}, c))))
+                                                : [el("tr", {}, el("td", { colSpan: head.length, class: "off" }, "Noch keine Daten"))]));
+}
+function kpi(container, items) {
+  container.replaceChildren(...items.map(([label, value, cls]) =>
+    el("div", { class: "kpi" }, [el("div", { class: "v " + (cls || "") }, value), el("div", { class: "l" }, label)])));
+}
+function chart(id, config) {
+  charts[id]?.destroy();
+  charts[id] = new Chart($(id), { ...config, options: { responsive: true, maintainAspectRatio: false,
+    plugins: { legend: { labels: { boxWidth: 12 } } }, ...(config.options || {}) } });
+}
+const short = d => new Date(d + "T00:00:00").toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit" });
+
+// MARK: Auth
+
+async function init() {
+  const { data } = await db.auth.getSession();
+  data.session ? showApp() : showLogin();
+  db.auth.onAuthStateChange((_e, session) => session ? showApp() : showLogin());
+}
+function showLogin() { $("app").classList.add("hidden"); $("login").classList.remove("hidden"); }
+let started = false;
+function showApp() {
+  $("login").classList.add("hidden"); $("app").classList.remove("hidden");
+  if (!started) { started = true; load(); }
+}
+$("sendLink").onclick = async () => {
+  const email = $("email").value.trim();
+  if (!email) return;
+  $("loginMsg").textContent = "Sende …";
+  const { error } = await db.auth.signInWithOtp({ email, options: { emailRedirectTo: location.origin + location.pathname } });
+  $("loginMsg").textContent = error ? "Fehler: " + error.message : "Link ist unterwegs. Öffne die Mail auf diesem Gerät.";
+};
+$("logout").onclick = async () => { await db.auth.signOut(); started = false; };
+$("refresh").onclick = () => load();
+$("range").onchange = () => load();
+$("testMode").onchange = () => load();
+
+// MARK: Data
+
+async function rpc(name, args) {
+  const { data, error } = await db.rpc(name, args);
+  if (error) throw new Error(name + ": " + error.message);
+  return data;
+}
+
+async function load() {
+  const days = +$("range").value, test = $("testMode").checked;
+  $("status").textContent = "Lade …";
+  try {
+    const [o, r, g, x, rec] = await Promise.all([
+      rpc("dash_overview", { p_days: days, p_test: test }),
+      rpc("dash_retention", { p_days: Math.max(days, 30), p_test: test }),
+      rpc("dash_gameplay", { p_days: days, p_test: test }),
+      rpc("dash_experiments", { p_days: Math.max(days, 60), p_test: test }),
+      rpc("dash_recent", { p_limit: 40, p_test: test }),
+    ]);
+    renderOverview(o); renderRetention(r); renderGameplay(g); renderExperiments(x); renderRecent(rec);
+    $("status").textContent = "Stand: " + new Date().toLocaleString("de-DE") + (test ? " · nur Testdaten" : " · echte Spieler");
+  } catch (e) {
+    $("status").textContent = e.message.includes("not allowed")
+      ? "Dieses Konto ist nicht als Admin eingetragen." : "Fehler beim Laden: " + e.message;
+  }
+  loadConfig();
+}
+
+function renderOverview(o) {
+  const t = o.totals;
+  kpi($("kpis"), [
+    ["Spieler heute", fmt(t.players_today)], ["Spieler 7 Tage", fmt(t.players_7d)], ["Spieler 30 Tage", fmt(t.players_30d)],
+    ["Neue Spieler 7 Tage", fmt(t.new_7d)], ["Spieler gesamt", fmt(t.players_all)],
+    ["Runs heute", fmt(t.runs_today)], ["Runs 7 Tage", fmt(t.runs_7d)], ["Runs pro Spieler (7 T.)", fmt(t.runs_per_player_7d)],
+    ["Ø Distanz (7 T.)", t.avg_distance_7d == null ? "–" : fmt(t.avg_distance_7d) + " m"],
+    ["Median Distanz (7 T.)", t.median_distance_7d == null ? "–" : fmt(t.median_distance_7d) + " m"],
+    ["Ø Run-Dauer (7 T.)", t.avg_run_seconds_7d == null ? "–" : fmt(t.avg_run_seconds_7d) + " s"],
+    ["Bestweite", t.best_distance == null ? "–" : fmt(t.best_distance) + " m"],
+    ["Revives (7 T.)", fmt(t.revives_7d)], ["Comeback-Geschenke (7 T.)", fmt(t.comebacks_7d)],
+    ["Event-Bonus-Kristalle (7 T.)", fmt(t.event_bonus_7d)], ["Bewertungs-Dialoge (7 T.)", fmt(t.reviews_7d)],
+  ]);
+  const d = o.daily || [];
+  chart("cPlayers", { type: "bar", data: { labels: d.map(x => short(x.day)), datasets: [
+    { label: "Aktive Spieler", data: d.map(x => x.players), backgroundColor: C.accent, borderRadius: 4 },
+    { label: "Neue Spieler", data: d.map(x => x.new_players), backgroundColor: C.accent2, borderRadius: 4 },
+  ] }, options: { scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } } });
+  chart("cRuns", { data: { labels: d.map(x => short(x.day)), datasets: [
+    { type: "bar", label: "Runs", data: d.map(x => x.runs), backgroundColor: C.accent, borderRadius: 4, yAxisID: "y" },
+    { type: "line", label: "Ø Distanz (m)", data: d.map(x => x.avg_distance), borderColor: C.warn, backgroundColor: C.warn,
+      tension: .3, spanGaps: true, yAxisID: "y1" },
+  ] }, options: { scales: { y: { beginAtZero: true, ticks: { precision: 0 } },
+                            y1: { beginAtZero: true, position: "right", grid: { drawOnChartArea: false } } } } });
+}
+
+function renderRetention(r) {
+  const pct = v => v == null ? "–" : String(v).replace(".", ",") + " %";
+  kpi($("retKpis"), [["Tag 1", pct(r.d1)], ["Tag 7", pct(r.d7)], ["Tag 30", pct(r.d30)]]);
+  const rows = (r.cohorts || []).slice().reverse().map(c => {
+    const rate = n => c.players ? Math.round(100 * n / c.players) + " %" : "–";
+    return [short(c.day), fmt(c.players), rate(c.d1), rate(c.d7), rate(c.d30)];
+  });
+  table($("retTable"), ["Neu am", "Spieler", "Tag 1", "Tag 7", "Tag 30"], rows);
+}
+
+function renderGameplay(g) {
+  const b = g.distance_buckets || [];
+  chart("cDist", { type: "bar", data: { labels: b.map(x => x.hi == null ? `${fmt(x.lo)}+ m` : `${fmt(x.lo)}–${fmt(x.hi)} m`),
+    datasets: [{ label: "Runs", data: b.map(x => x.runs), backgroundColor: C.accent, borderRadius: 4 }] },
+    options: { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } } });
+  const steps = (g.tutorial?.steps || []).map(s => ({ label: s.step === 99 ? "Fertig" : "Schritt " + s.step, n: s.players }));
+  const started = g.tutorial?.started || 0;
+  const labels = ["Gestartet", ...steps.map(s => s.label)], vals = [started, ...steps.map(s => s.n)];
+  chart("cTut", { type: "bar", data: { labels, datasets: [{ label: "Spieler", data: vals, backgroundColor: C.accent2, borderRadius: 4 }] },
+    options: { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } } });
+  table($("typeTable"), ["Ereignis", "Anzahl"], (g.event_types || []).map(t => [t.type, fmt(t.n)]));
+}
+
+function renderExperiments(x) {
+  table($("expTable"), ["Test", "Gruppe", "Spieler", "Runs/Spieler", "Ø Distanz", "Tag 1"],
+    (x || []).map(r => [r.experiment, r.variant, fmt(r.players), fmt(r.runs_per_player),
+                        r.avg_distance == null ? "–" : fmt(r.avg_distance) + " m", r.d1 == null ? "–" : String(r.d1).replace(".", ",") + " %"]));
+}
+
+function renderRecent(list) {
+  table($("recentTable"), ["Zeit", "Ereignis", "Spieler", "Details"], (list || []).map(e => [
+    new Date(e.t).toLocaleString("de-DE", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }),
+    e.type, el("code", {}, e.player),
+    Object.entries(e.payload || {}).map(([k, v]) => `${k}: ${v}`).join(" · ") || (e.value ?? ""),
+  ]));
+}
+
+// MARK: Live config (same files the app downloads)
+
+function ruleText(r) {
+  if (!r) return "immer";
+  const ops = { Equal: "=", NotEqual: "≠", Greater: ">", GreaterEqual: "≥", Less: "<", LessEqual: "≤", In: "in" };
+  if (r.type === "All") return (r.children || []).map(ruleText).join(" UND ");
+  if (r.type === "Any") return "(" + (r.children || []).map(ruleText).join(" ODER ") + ")";
+  if (r.type === "Not") return "NICHT " + ruleText((r.children || [])[0]);
+  if (r.type === "IsInTimeSlot") return `${r.from || "…"} bis ${r.to || "…"}`;
+  if (r.type === "IsWeekend") return "am Wochenende";
+  if (r.type === "Fact") return `${r.key} ${ops[r.operator || "Equal"]} ${r.value}`;
+  return `${r.type}${r.key ? "(" + r.key + ")" : ""} ${r.operator ? ops[r.operator] + " " + r.value : ""}`.trim();
+}
+function liveNow(r) {
+  if (!r) return true;
+  const now = new Date();
+  if (r.type === "IsWeekend") return [0, 6].includes(now.getDay());
+  if (r.type === "IsInTimeSlot") {
+    const from = r.from ? new Date(r.from + "T00:00:00") : null, to = r.to ? new Date(r.to + "T00:00:00") : null;
+    if (to) to.setDate(to.getDate() + 1);
+    return (!from || now >= from) && (!to || now < to);
+  }
+  return null;   // depends on the player
+}
+
+async function loadConfig() {
+  const box = $("config");
+  try {
+    const [m, c] = await Promise.all([
+      fetch("../manifest.json?t=" + Date.now()).then(r => r.json()),
+      fetch("../GameConfig.json?t=" + Date.now()).then(r => r.json()),
+    ]);
+    const s = c.speed || {}, o = c.obstacles || {}, rv = c.revive || {};
+    const events = (c.events || []).map(e => {
+      const live = liveNow(e.when);
+      return [e.title || e.id, ruleText(e.when),
+        [e.crystalMultiplier > 1 ? `Kristalle x${e.crystalMultiplier}` : "", e.tokenChanceScale > 1 ? `Tokens x${e.tokenChanceScale}` : ""].filter(Boolean).join(", ") || "–",
+        el("span", { class: live ? "on" : live === false ? "off" : "warn" }, live ? "läuft jetzt" : live === false ? "nicht aktiv" : "je nach Spieler")];
+    });
+    const exps = (c.experiments || []).map(x => [x.id, el("span", { class: x.enabled === false ? "off" : "on" }, x.enabled === false ? "aus" : "an"),
+      Math.round((x.traffic ?? 1) * 100) + " %", Object.entries(x.variants || {}).map(([n, v]) => `${n} (${v.weight ?? 1})`).join(", "), ruleText(x.audience)]);
+    const evT = el("table"), exT = el("table"), valT = el("table");
+    table(evT, ["Event", "Wann", "Effekt", "Status"], events);
+    table(exT, ["Test", "Status", "Anteil", "Gruppen (Gewicht)", "Für wen"], exps);
+    table(valT, ["Wert", "Einstellung"], [
+      ["Speed", `Start ${s.start} m/s, +${s.rise} in den ersten ${fmt(s.riseMeters)} m, dann +${s.perKm} pro km, max ${s.cap} m/s`],
+      ["Hindernis-Abstand", `${o.spacingStart} s am Anfang, ${(o.spacingStart - o.spacingDrop).toFixed(2)} s ab ${fmt(o.difficultyMeters)} m`],
+      ["Sprunghöhe", `${c.jump?.hopHeight} m`],
+      ["Perks", `Chance ${Math.round((c.perks?.chancePerChunk || 0) * 100)} % pro Abschnitt`],
+      ["Tokens", `Chance ${((c.tokens?.chancePerChunk || 0) * 100).toFixed(1)} % pro Abschnitt`],
+      ["Revive", `max ${rv.maxPerRun} pro Run, Kosten ${rv.firstCost} + ${rv.costStep} je weiterem`],
+      ["Login-Belohnungen", (c.loginRewards || []).map((r, i) => `T${i + 1}: ${r.crystals}${r.tokens ? "+" + r.tokens + "T" : ""}`).join(" · ")],
+      ["Comeback-Geschenk", `${c.comeback?.crystals} Kristalle + ${c.comeback?.tokens} Token, wenn ${ruleText(c.comeback?.when)}`],
+      ["Einstieg", (c.runModifiers || []).map(r => `${r.id}: wenn ${ruleText(r.when)} → Speed-Anstieg x${r.riseScale ?? 1}, Abstand x${r.spacingScale ?? 1}`).join(" · ") || "–"],
+      ["Analytics", `${c.analytics?.enabled === false ? "aus" : "an"}, gemessen: ${Math.round((c.analytics?.sampleRate ?? 1) * 100)} % der Spieler`],
+    ]);
+    box.replaceChildren(
+      el("p", { class: "hint", style: "margin-top:0" }, [`Online-Version ${m.version} `, el("code", {}, m.hash || (m.disabled ? "abgeschaltet" : "–")),
+        " · Ändern: Config/GameConfig.json bearbeiten und tools/publish_config.sh ausführen."]),
+      el("h2", { style: "margin-top:14px" }, "Events"), el("div", { class: "scroll" }, evT),
+      el("h2", { style: "margin-top:18px" }, "A/B-Tests"), el("div", { class: "scroll" }, exT),
+      el("h2", { style: "margin-top:18px" }, "Spielwerte"), el("div", { class: "scroll" }, valT));
+  } catch (e) {
+    box.replaceChildren(el("p", { class: "warn" }, "Config konnte nicht geladen werden: " + e.message));
+  }
+}
+
+init();
+</script>
+</body>
+</html>
