@@ -1,5 +1,5 @@
 {
-  "version": 6,
+  "version": 7,
 
   "speed": { "start": 15, "rise": 10, "riseMeters": 1500, "perKm": 1.2, "cap": 42 },
 
@@ -10,7 +10,7 @@
     "patternWeights": [2.4, 0.8, 1.5, 0.5, 0.9, 0.5, 0.7, 0.5, 1.2, 1.0, 0.5, 0.4, 0.8, 0.8, 1.3]
   },
 
-  "jump": { "hopHeight": 3.0, "hopGravityScale": 1.8 },
+  "jump": { "hopHeight": 2.0, "hopGravityScale": 1.8 },
 
   "perks": {
     "chancePerChunk": 0.32,
